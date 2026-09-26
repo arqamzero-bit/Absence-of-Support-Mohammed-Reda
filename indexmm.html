@@ -26,11 +26,10 @@ body{background:#f0f2f5;font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;}
 .btn-danger{background:#e74c3c;border:none;}.btn-danger:hover{background:#c0392b;}
 .stats-card{background:#fff;border-radius:15px;padding:15px;text-align:center;border:1px solid #eee;}
 .stats-number{font-size:2rem;font-weight:bold;color:#2c3e66;}
-.status-present{background:#28a745!important;color:#fff!important;cursor:pointer;transition:.2s;}
-.status-late{background:#ffc107!important;color:#856404!important;cursor:pointer;transition:.2s;}
-.status-absent{background:#dc3545!important;color:#fff!important;cursor:pointer;transition:.2s;}
-.status-none{background:#e9ecef!important;color:#6c757d!important;cursor:pointer;transition:.2s;}
-.status-none:hover,.status-present:hover,.status-late:hover,.status-absent:hover{opacity:.9;transform:scale(1.05);}
+.status-present{background:#28a745!important;color:#fff!important;transition:.2s;}
+.status-late{background:#ffc107!important;color:#856404!important;transition:.2s;}
+.status-absent{background:#dc3545!important;color:#fff!important;transition:.2s;}
+.status-none{background:#e9ecef!important;color:#6c757d!important;transition:.2s;}
 .class-badge{background:#e7e9ed;color:#2c3e66;padding:3px 10px;border-radius:15px;font-size:.85rem;}
 .upload-area{border:2px dashed #27ae60;border-radius:15px;padding:30px;text-align:center;cursor:pointer;background:#f8f9fa;margin:10px 0;transition:.3s;}
 .upload-area:hover{background:#e8f5e9;}
@@ -81,6 +80,17 @@ body{background:#f0f2f5;font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;}
 .week-box h6{color:#2c3e66;font-weight:bold;}
 .student-chip{display:inline-block;background:#eef2f7;border-radius:12px;padding:4px 12px;margin:3px;font-size:.85rem;color:#2c3e66;}
 .disclaimer{background:#fff8e1;border:1px solid #ffe082;border-radius:14px;padding:14px;color:#7d6608;font-size:.9rem;}
+/* ====== شريط تغيير حالة الجميع ====== */
+.bulk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#eef2f7;border:1px solid #dfe3e8;border-radius:14px;padding:10px 14px;margin-bottom:14px;}
+.bulk-bar .bulk-title{font-weight:bold;color:#2c3e66;margin-inline-end:6px;}
+.bulk-bar .btn{font-weight:bold;}
+/* ====== قائمة حالة الطالب ====== */
+.status-select{font-weight:bold;border:none!important;min-width:150px;cursor:pointer;box-shadow:none!important;}
+.status-select.status-present{background:#28a745!important;color:#fff!important;}
+.status-select.status-late{background:#ffc107!important;color:#856404!important;}
+.status-select.status-absent{background:#dc3545!important;color:#fff!important;}
+.status-select.status-none{background:#e9ecef!important;color:#6c757d!important;}
+.status-select:hover{opacity:.92;}
 @media (max-width:576px){#loginScreen .card{width:95%;padding:25px 20px;}.header-bar{flex-direction:column;align-items:stretch;text-align:center;}}
 </style>
 </head>
@@ -185,9 +195,20 @@ body{background:#f0f2f5;font-family:'Segoe UI',Tahoma,sans-serif;padding:20px;}
           <div class="col-md-2 col-6"><label>📎 رفع طلاب</label><button id="uploadBtn" class="btn btn-warning w-100">رفع Excel</button></div>
           <div class="col-md-2 col-6"><label>📥 تصدير</label><button id="exportSheetBtn" class="btn btn-danger w-100">تصدير الكشف</button></div>
         </div>
+
+        <!-- 🔽 شريط تغيير حالة الجميع -->
+        <div id="bulkStatusBar" class="bulk-bar" style="display:none">
+          <span class="bulk-title"><i class="fas fa-users-cog"></i> تغيير حالة الجميع:</span>
+          <button class="btn btn-success btn-sm" onclick="setAllStatus('present')"><i class="fas fa-check"></i> الكل حاضر</button>
+          <button class="btn btn-warning btn-sm" onclick="setAllStatus('late')"><i class="fas fa-clock"></i> الكل تأخر</button>
+          <button class="btn btn-danger btn-sm" onclick="setAllStatus('absent')"><i class="fas fa-times"></i> الكل غائب</button>
+          <button class="btn btn-secondary btn-sm" onclick="setAllStatus('none')"><i class="fas fa-eraser"></i> مسح الحالات</button>
+          <span class="ms-auto text-muted small" id="bulkHint"></span>
+        </div>
+
         <div class="table-responsive">
           <table class="table table-hover table-bordered align-middle">
-            <thead class="table-light"><tr><th>#</th><th>اسم الطالب</th><th>الصف</th><th>الحالة (اضغط للتغيير)</th><th>الملاحظات</th></tr></thead>
+            <thead class="table-light"><tr><th>#</th><th>اسم الطالب</th><th>الصف</th><th>الحالة (اختر من القائمة)</th><th>الملاحظات</th></tr></thead>
             <tbody id="attendanceBody"><tr><td colspan="5" class="text-center text-muted">اختر تاريخ واضغط على "عرض الكشف"</td></tr></tbody>
           </table>
         </div>
@@ -729,7 +750,6 @@ function analyzeIndicators(indicators, results){
     scores[k] = max ? Math.round((sum / max) * 100) : 0;
   }
 
-  // دمج نتائج الطالب الفعلية (ترفع وزن الفئة أ عند ضعف القراءة/الكتابة)
   if (results){
     const ra = parseFloat(results.readAccuracy), wr = parseFloat(results.writing),
           co = parseFloat(results.comprehension);
@@ -865,61 +885,129 @@ function renderStudentsTable(){
 }
 
 /* =============================================================
-   10. كشف الحضور (كما هو)
+   10. كشف الحضور
    ============================================================= */
 function renderAttendance(){
   const tbody = document.getElementById("attendanceBody");
   if (!tbody) return;
+  const bulkBar = document.getElementById("bulkStatusBar");
+  const bulkHint = document.getElementById("bulkHint");
+
   if (!currentDate){
     tbody.innerHTML = "<tr><td colspan='5' class='text-center text-muted'>📌 اختر تاريخ واضغط على 'عرض الكشف'</td></tr>";
+    if (bulkBar) bulkBar.style.display = "none";
     return;
   }
+
   let filtered = currentClass ? students.filter(s => s.class === currentClass) : [...students];
+  if (bulkBar) bulkBar.style.display = filtered.length ? "flex" : "none";
+  if (bulkHint) bulkHint.textContent = currentClass ? `الصف: ${currentClass} (${filtered.length} طالب)` : `جميع الطلاب (${filtered.length})`;
+
   if (filtered.length === 0){
     tbody.innerHTML = "<tr><td colspan='5' class='text-center text-muted'>لا يوجد طلاب في هذا الصف</td></tr>";
     return;
   }
+
+  const canEdit = currentUser !== null;
   let html = "";
+
   filtered.forEach((student, idx) => {
     let record = attendance.find(a => a.date === currentDate && a.studentId === student.id);
     let status = record ? record.status : "none";
-    let notes = record ? (record.notes || "") : "";
+    let notes  = record ? (record.notes || "") : "";
+
     let statusClass, statusText, icon;
-    if (status === "present"){ statusClass="status-present"; statusText="حاضر"; icon="✅"; }
-    else if (status === "late"){ statusClass="status-late"; statusText="تأخر"; icon="⏰"; }
+    if (status === "present"){ statusClass="status-present"; statusText="حاضر";   icon="✅"; }
+    else if (status === "late"){ statusClass="status-late";  statusText="تأخر";   icon="⏰"; }
     else if (status === "absent"){ statusClass="status-absent"; statusText="غائب"; icon="❌"; }
     else { statusClass="status-none"; statusText="غير مسجل"; icon="⚪"; }
 
-    const canEdit = currentUser !== null;
-    const statusClick = canEdit ? `onclick="changeStatus(${student.id})"` : '';
-    const noteBtn = canEdit ? `<button class="btn btn-sm btn-light border" onclick="openNote(${student.id}, '${currentDate}', '${notes.replace(/'/g,"\\'")}')"><i class="fas fa-pen text-primary"></i></button>` : '';
+    let statusCell;
+    if (canEdit){
+      statusCell = `
+        <select class="form-select form-select-sm status-select ${statusClass}"
+                onchange="changeStatusDirect(${student.id}, this.value)"
+                title="اختر الحالة">
+          <option value="present" ${status==='present'?'selected':''}>✅ حاضر</option>
+          <option value="late"    ${status==='late'   ?'selected':''}>⏰ تأخر</option>
+          <option value="absent"  ${status==='absent' ?'selected':''}>❌ غائب</option>
+          <option value="none"    ${status==='none'   ?'selected':''}>⚪ غير مسجل</option>
+        </select>`;
+    } else {
+      statusCell = `<span class="badge p-2 ${statusClass}">${icon} ${statusText}</span>
+        <br><small class="text-muted">🔒 للقراءة فقط</small>`;
+    }
+
+    const noteBtn = canEdit
+      ? `<button class="btn btn-sm btn-light border" onclick="openNote(${student.id}, '${currentDate}', '${notes.replace(/'/g,"\\'")}')"><i class="fas fa-pen text-primary"></i></button>`
+      : '';
 
     html += `<tr>
       <td>${idx+1}</td>
       <td><strong>${student.name}</strong></td>
       <td><span class="class-badge">${student.class}</span></td>
-      <td class="text-center">
-        <span class="badge p-2 ${statusClass}" ${statusClick} title="${canEdit?'اضغط للتغيير':'عرض فقط'}">${icon} ${statusText}</span>
-        ${!canEdit?'<br><small class="text-muted">🔒 للقراءة فقط</small>':''}
-      </td>
+      <td class="text-center">${statusCell}</td>
       <td>${noteBtn} <small class="text-muted me-2">${notes ? notes.substring(0,15)+(notes.length>15?'...':'') : ''}</small></td>
     </tr>`;
   });
+
   tbody.innerHTML = html;
 }
 
 /* =============================================================
    11. عمليات الحضور
    ============================================================= */
-function changeStatus(studentId){
+/* تغيير حالة طالب واحد مباشرة من القائمة */
+function changeStatusDirect(studentId, status){
+  if (!currentUser){ alert("⚠️ يجب تسجيل الدخول لتغيير الحالة"); renderAttendance(); return; }
+  if (!currentDate){ alert("الرجاء اختيار التاريخ أولاً"); renderAttendance(); return; }
+
+  let record = attendance.find(a => a.date === currentDate && a.studentId === studentId);
+
+  if (status === "none"){
+    if (record && !record.notes){
+      attendance = attendance.filter(a => !(a.date === currentDate && a.studentId === studentId));
+    } else if (record){
+      record.status = "none";
+    }
+  } else {
+    if (record) record.status = status;
+    else attendance.push({ id: nextAttId++, date: currentDate, studentId, status, notes:"" });
+  }
+
+  saveData();
+  renderAttendance();
+}
+
+/* تغيير حالة جميع الطلاب دفعة واحدة */
+function setAllStatus(status){
   if (!currentUser){ alert("⚠️ يجب تسجيل الدخول لتغيير الحالة"); return; }
   if (!currentDate){ alert("الرجاء اختيار التاريخ أولاً"); return; }
-  let record = attendance.find(a => a.date === currentDate && a.studentId === studentId);
-  let cur = record ? record.status : "none";
-  let next = cur === "none" ? "present" : cur === "present" ? "late" : cur === "late" ? "absent" : "present";
-  if (record) record.status = next;
-  else attendance.push({ id: nextAttId++, date: currentDate, studentId, status: next, notes:"" });
-  saveData(); renderAttendance();
+
+  const filtered = currentClass ? students.filter(s => s.class === currentClass) : [...students];
+  if (filtered.length === 0){ alert("لا يوجد طلاب لتطبيق التغيير"); return; }
+
+  const labels = { present:"حاضر", late:"تأخر", absent:"غائب", none:"غير مسجل" };
+  const scope  = currentClass ? `صف "${currentClass}"` : "جميع الطلاب";
+
+  if (!confirm(`هل تريد تعيين حالة ${scope} (${filtered.length} طالب) إلى "${labels[status]}"؟\nيمكنك تعديل أي طالب بعد ذلك من القائمة المنسدلة.`)) return;
+
+  filtered.forEach(student => {
+    let record = attendance.find(a => a.date === currentDate && a.studentId === student.id);
+    if (status === "none"){
+      if (record && !record.notes){
+        attendance = attendance.filter(a => !(a.date === currentDate && a.studentId === student.id));
+      } else if (record){
+        record.status = "none";
+      }
+    } else {
+      if (record) record.status = status;
+      else attendance.push({ id: nextAttId++, date: currentDate, studentId: student.id, status, notes:"" });
+    }
+  });
+
+  saveData();
+  renderAttendance();
 }
 
 function openNote(studentId, date, notes){
@@ -946,6 +1034,7 @@ function saveNote(){
 function initDay(){
   if (!currentUser){ alert("⚠️ يجب تسجيل الدخول لتهيئة اليوم"); return; }
   if (!currentDate){ alert("الرجاء اختيار التاريخ أولاً"); return; }
+
   let filtered = currentClass ? students.filter(s => s.class === currentClass) : [...students];
   let added = 0;
   filtered.forEach(student => {
@@ -954,8 +1043,13 @@ function initDay(){
       added++;
     }
   });
-  if (added > 0){ saveData(); renderAttendance(); alert(`✅ تمت إضافة ${added} طالب بحالة "غائب" كتهيئة مبدئية.`); }
-  else alert("ℹ️ جميع الطلاب مسجلون مسبقاً لهذا التاريخ.");
+
+  if (added > 0){
+    saveData(); renderAttendance();
+    alert(`✅ تم تسجيل ${added} طالب بحالة "غائب" — يمكنك الآن تعليم الحاضرين إما فرديًا أو بزر (الكل حاضر).`);
+  } else {
+    alert("ℹ️ جميع الطلاب مسجلون مسبقاً لهذا التاريخ.");
+  }
 }
 
 /* =============================================================
@@ -1434,7 +1528,6 @@ function createProgram(studentId){
   const key = a.analysis.primary;
   const tmpl = CATEGORIES[key].program;
 
-  // تخصيص البرنامج حسب نتائج الطالب
   const res = a.results || {};
   let title = tmpl.title;
   if (key === 'A'){
@@ -1466,7 +1559,6 @@ function buildSessionsPane(studentId){
     return `<div class="alert alert-info">لا توجد جلسات مسجلة بعد.</div>
       <button class="btn btn-primary" id="newSessionBtn2"><i class="fas fa-plus"></i> تسجيل جلسة دعم</button>`;
   }
-  const maxP = 100;
   const chart = list.map(s => `
     <div class="d-flex align-items-center mb-1">
       <div style="width:95px" class="small text-muted">${s.date}</div>
@@ -1602,7 +1694,6 @@ function buildFilePane(studentId){
   const sess = sessions.filter(x => x.studentId === studentId);
   const evs = evidences.filter(x => x.studentId === studentId);
 
-  // إعادة القياس: أول جلسة vs آخر جلسة
   const sorted = sess.slice().sort((x,y)=>(x.date||'').localeCompare(y.date||''));
   const pre = sorted.length ? (sorted[0].percent||0) : (a && a.results && a.results.readAccuracy ? parseFloat(a.results.readAccuracy) : null);
   const post = sorted.length ? (sorted[sorted.length-1].percent||0) : null;
@@ -1874,7 +1965,6 @@ document.addEventListener("DOMContentLoaded", function(){
   flatpickr("#sessionDate", { dateFormat:"Y-m-d", locale:"ar", defaultDate:"today" });
   flatpickr("#evDate", { dateFormat:"Y-m-d", locale:"ar", defaultDate:"today" });
 
-  // التنقل الرئيسي
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -1887,7 +1977,6 @@ document.addEventListener("DOMContentLoaded", function(){
     };
   });
 
-  // الحضور
   document.getElementById("viewBtn").onclick = () => {
     currentDate = document.getElementById("datePicker").value;
     currentClass = document.getElementById("classFilter").value;
@@ -1898,7 +1987,6 @@ document.addEventListener("DOMContentLoaded", function(){
   document.getElementById("uploadBtn").onclick = openExcelModal;
   document.getElementById("exportSheetBtn").onclick = exportSheet;
 
-  // الطلاب
   document.getElementById("addStudentBtn").onclick = () => {
     if (!currentUser){ alert("⚠️ يجب تسجيل الدخول لإضافة طالب"); return; }
     document.getElementById("studentId").value = "";
@@ -1913,7 +2001,6 @@ document.addEventListener("DOMContentLoaded", function(){
   document.getElementById("deleteAllBtn").onclick = deleteAllStudents;
   document.getElementById("exportListBtn").onclick = exportStudentsList;
 
-  // ملفات الدعم
   document.getElementById("openStudentFileBtn").onclick = () => {
     const id = parseInt(document.getElementById("supportStudentSelect").value);
     if (!id){ alert("اختر طالبًا أولاً"); return; }
@@ -1926,13 +2013,11 @@ document.addEventListener("DOMContentLoaded", function(){
     else document.getElementById('supportWorkspace').innerHTML = '';
   };
 
-  // المودالات
   document.getElementById("saveNoteBtn").onclick = saveNote;
   document.getElementById("confirmExcelBtn").onclick = confirmExcel;
   document.getElementById("saveSessionBtn").onclick = saveSession;
   document.getElementById("saveEvidenceBtn").onclick = saveEvidence;
 
-  // رفع Excel
   const uploadArea = document.getElementById("uploadArea");
   const fileInput = document.getElementById("excelFile");
   uploadArea.onclick = () => fileInput.click();
@@ -1944,7 +2029,6 @@ document.addEventListener("DOMContentLoaded", function(){
   };
   fileInput.onchange = e => { if (e.target.files[0]) readExcel(e.target.files[0]); };
 
-  // التقارير والبحث
   document.getElementById("smartSearch").oninput = runSmartSearch;
   document.getElementById("classReportSelect").onchange = renderClassReport;
   document.getElementById("buildClassReportBtn").onclick = renderClassReport;
